@@ -316,6 +316,12 @@ static struct module_pin_mux i2c1_pin_mux[] = {
 	{-1},
 };
 
+/* Added by MYIR */
+static struct module_pin_mux myir_backlight_mux[] = {
+        {OFFSET(spi0_sclk), (MODE(7))}, /* GPOI0_2, pull down enable, output */
+        {-1},
+};
+
 #ifndef CONFIG_NO_ETH
 static struct module_pin_mux rgmii1_pin_mux[] = {
 	{OFFSET(mii1_txen), MODE(2)},			/* RGMII1_TCTL */
@@ -694,3 +700,10 @@ void enable_uart0_pin_mux(void)
 {
 	configure_module_pin_mux(uart0_pin_mux);
 }
+
+/* MYIR */
+void enable_backlight_pin_mux(void)
+{
+	configure_module_pin_mux(myir_backlight_mux);
+}
+

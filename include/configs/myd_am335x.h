@@ -51,8 +51,10 @@
 /* MYIR */
 #if defined(CONFIG_DISPLAY_LCD43)
 	#define	DISPLAY_MODE	"lcd4i3"
-#elif defined(CONFIG_DISPLAY_LCD70)
-	#define DISPLAY_MODE	"lcd7i"
+#elif defined(CONFIG_DISPLAY_LCD70R)
+	#define DISPLAY_MODE	"lcd7ir"
+#elif defined(CONFIG_DISPLAY_LCD70C)
+	#define DISPLAY_MODE    "lcd7ic"
 #elif defined(CONFIG_DISPLAY_HDMI720P)
 	#define DISPLAY_MODE	"hdmi720p"
 #elif defined(CONFIG_DISPLAY_HDMI640X480)

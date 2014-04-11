@@ -352,9 +352,136 @@ void spl_board_init(void)
 		/* Frequency switching for OPP 120 */
  		mpu_pll_config(MPUPLL_M_720);
 #endif
-	mpu_pll_config(MPUPLL_M_720);/* Added by MYIR, our chip is 720MHz */
+	mpu_pll_config(MPUPLL_M_800);/* Added by MYIR, our chip is 800MHz */
 }
 #endif
+
+/* 
+ * Added by MYIR, turn off lcd backlight by setting GPIO0_2 output LOW.
+ */
+extern void enable_backlight_pin_mux(void);
+static void myir_init_backlight()
+{
+#define SOC_PRCM_REGS                        (0x44E00000)
+#define SOC_CM_WKUP_REGS                     (SOC_PRCM_REGS + 0x400)
+#define CM_WKUP_GPIO0_CLKCTRL   (0x8)
+#define CM_WKUP_GPIO0_CLKCTRL_MODULEMODE_ENABLE   (0x2u)
+#define CM_WKUP_GPIO0_CLKCTRL_MODULEMODE   (0x00000003u)
+#define CM_WKUP_GPIO0_CLKCTRL_OPTFCLKEN_GPIO0_GDBCLK   (0x00040000u)
+#define CM_WKUP_CONTROL_CLKCTRL_IDLEST_FUNC   (0x0u)
+#define CM_WKUP_CONTROL_CLKCTRL_IDLEST_SHIFT   (0x00000010u)
+#define CM_WKUP_CONTROL_CLKCTRL   (0x4)
+#define CM_WKUP_CONTROL_CLKCTRL_IDLEST   (0x00030000u)
+#define CM_WKUP_CM_L3_AON_CLKSTCTRL_CLKACTIVITY_L3_AON_GCLK   (0x00000008u)
+#define CM_WKUP_CM_L3_AON_CLKSTCTRL   (0x18)
+#define CM_WKUP_L4WKUP_CLKCTRL_IDLEST_FUNC   (0x0u)
+#define CM_WKUP_L4WKUP_CLKCTRL_IDLEST_SHIFT   (0x00000010u)
+#define CM_WKUP_L4WKUP_CLKCTRL   (0xc)
+#define CM_WKUP_L4WKUP_CLKCTRL_IDLEST   (0x00030000u)
+#define CM_WKUP_CLKSTCTRL_CLKACTIVITY_L4_WKUP_GCLK   (0x00000004u)
+#define CM_WKUP_CLKSTCTRL   (0x0)
+#define CM_WKUP_CM_L4_WKUP_AON_CLKSTCTRL_CLKACTIVITY_L4_WKUP_AON_GCLK   (0x00000004u)
+#define CM_WKUP_CM_L4_WKUP_AON_CLKSTCTRL   (0xcc)
+#define CM_WKUP_GPIO0_CLKCTRL_IDLEST_FUNC   (0x0u)
+#define CM_WKUP_GPIO0_CLKCTRL_IDLEST_SHIFT   (0x00000010u)
+#define CM_WKUP_GPIO0_CLKCTRL   (0x8)
+#define CM_WKUP_GPIO0_CLKCTRL_IDLEST   (0x00030000u)
+#define CM_WKUP_CLKSTCTRL_CLKACTIVITY_GPIO0_GDBCLK   (0x00000100u)
+
+#define GPIO0_BASE              0x44E07000
+#define GPIO0_OE                (GPIO0_BASE + 0x134)
+#define GPIO0_DATAOUT           (GPIO0_BASE + 0x13c)
+#define GPIO0_SETDATAOUT        (GPIO0_BASE + 0x194)
+#define GPIO0_CLEARDATAOUT      (GPIO0_BASE + 0x190)
+#define BL_BIT                 (1 << 2)
+
+    /* Writing to MODULEMODE field of CM_WKUP_GPIO0_CLKCTRL register. */
+    __raw_writel(__raw_readl(SOC_CM_WKUP_REGS + CM_WKUP_GPIO0_CLKCTRL) |=
+        CM_WKUP_GPIO0_CLKCTRL_MODULEMODE_ENABLE, SOC_CM_WKUP_REGS + CM_WKUP_GPIO0_CLKCTRL);
+
+    /* Waiting for MODULEMODE field to reflect the written value. */
+    while(CM_WKUP_GPIO0_CLKCTRL_MODULEMODE_ENABLE !=
+          (__raw_readl(SOC_CM_WKUP_REGS + CM_WKUP_GPIO0_CLKCTRL) &
+           CM_WKUP_GPIO0_CLKCTRL_MODULEMODE));
+
+    /*
+    ** Writing to OPTFCLKEN_GPIO0_GDBCLK field of CM_WKUP_GPIO0_CLKCTRL
+    ** register.
+    */
+    __raw_writel(__raw_readl(SOC_CM_WKUP_REGS + CM_WKUP_GPIO0_CLKCTRL) |=
+        CM_WKUP_GPIO0_CLKCTRL_OPTFCLKEN_GPIO0_GDBCLK, SOC_CM_WKUP_REGS + CM_WKUP_GPIO0_CLKCTRL);
+
+    /* Waiting for OPTFCLKEN_GPIO0_GDBCLK field to reflect the written value. */
+    while(CM_WKUP_GPIO0_CLKCTRL_OPTFCLKEN_GPIO0_GDBCLK !=
+          (__raw_readl(SOC_CM_WKUP_REGS + CM_WKUP_GPIO0_CLKCTRL) &
+           CM_WKUP_GPIO0_CLKCTRL_OPTFCLKEN_GPIO0_GDBCLK));
+
+    /* Verifying if the other bits are set to required settings. */
+
+    /*
+    ** Waiting for IDLEST field in CM_WKUP_CONTROL_CLKCTRL register to attain
+    ** desired value.
+    */
+    while((CM_WKUP_CONTROL_CLKCTRL_IDLEST_FUNC <<
+           CM_WKUP_CONTROL_CLKCTRL_IDLEST_SHIFT) !=
+          (__raw_readl(SOC_CM_WKUP_REGS + CM_WKUP_CONTROL_CLKCTRL) &
+           CM_WKUP_CONTROL_CLKCTRL_IDLEST));
+
+    /*
+    ** Waiting for CLKACTIVITY_L3_AON_GCLK field in CM_L3_AON_CLKSTCTRL
+    ** register to attain desired value.
+    */
+    while(CM_WKUP_CM_L3_AON_CLKSTCTRL_CLKACTIVITY_L3_AON_GCLK !=
+          (__raw_readl(SOC_CM_WKUP_REGS + CM_WKUP_CM_L3_AON_CLKSTCTRL) &
+           CM_WKUP_CM_L3_AON_CLKSTCTRL_CLKACTIVITY_L3_AON_GCLK));
+
+    /*
+    ** Waiting for IDLEST field in CM_WKUP_L4WKUP_CLKCTRL register to attain
+    ** desired value.
+    */
+    while((CM_WKUP_L4WKUP_CLKCTRL_IDLEST_FUNC <<
+           CM_WKUP_L4WKUP_CLKCTRL_IDLEST_SHIFT) !=
+          (__raw_readl(SOC_CM_WKUP_REGS + CM_WKUP_L4WKUP_CLKCTRL) &
+           CM_WKUP_L4WKUP_CLKCTRL_IDLEST));
+
+    /*
+    ** Waiting for CLKACTIVITY_L4_WKUP_GCLK field in CM_WKUP_CLKSTCTRL register
+    ** to attain desired value.
+    */
+    while(CM_WKUP_CLKSTCTRL_CLKACTIVITY_L4_WKUP_GCLK !=
+          (__raw_readl(SOC_CM_WKUP_REGS + CM_WKUP_CLKSTCTRL) &
+           CM_WKUP_CLKSTCTRL_CLKACTIVITY_L4_WKUP_GCLK));
+
+    /*
+    ** Waiting for CLKACTIVITY_L4_WKUP_AON_GCLK field in CM_L4_WKUP_AON_CLKSTCTRL
+    ** register to attain desired value.
+    */
+    while(CM_WKUP_CM_L4_WKUP_AON_CLKSTCTRL_CLKACTIVITY_L4_WKUP_AON_GCLK !=
+          (__raw_readl(SOC_CM_WKUP_REGS + CM_WKUP_CM_L4_WKUP_AON_CLKSTCTRL) &
+           CM_WKUP_CM_L4_WKUP_AON_CLKSTCTRL_CLKACTIVITY_L4_WKUP_AON_GCLK));
+
+
+    /* Writing to IDLEST field in CM_WKUP_GPIO0_CLKCTRL register. */
+    while((CM_WKUP_GPIO0_CLKCTRL_IDLEST_FUNC <<
+           CM_WKUP_GPIO0_CLKCTRL_IDLEST_SHIFT) !=
+          (__raw_readl(SOC_CM_WKUP_REGS + CM_WKUP_GPIO0_CLKCTRL) &
+           CM_WKUP_GPIO0_CLKCTRL_IDLEST));
+
+    /*
+    ** Waiting for CLKACTIVITY_GPIO0_GDBCLK field in CM_WKUP_GPIO0_CLKCTRL
+    ** register to attain desired value.
+    */
+    while(CM_WKUP_CLKSTCTRL_CLKACTIVITY_GPIO0_GDBCLK !=
+          (__raw_readl(SOC_CM_WKUP_REGS + CM_WKUP_CLKSTCTRL) &
+           CM_WKUP_CLKSTCTRL_CLKACTIVITY_GPIO0_GDBCLK));
+
+
+
+	enable_backlight_pin_mux();
+	__raw_writel(__raw_readl(GPIO0_OE) & ~BL_BIT, GPIO0_OE);
+	__raw_writel(BL_BIT, GPIO0_CLEARDATAOUT);
+
+}
 
 /*
  * early system init of muxing and clocks.
@@ -371,6 +498,9 @@ void s_init(void)
 	while(__raw_readl(WDT_WWPS) != 0x0);
 	__raw_writel(0x5555, WDT_WSPR);
 	while(__raw_readl(WDT_WWPS) != 0x0);
+
+	/* Added by MYIR, init LCD backlight(turn_off) */
+	myir_init_backlight();
 
 #ifdef CONFIG_SPL_BUILD
 	/* Setup the PLLs and the clocks for the peripherals */
