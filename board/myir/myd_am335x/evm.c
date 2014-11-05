@@ -308,51 +308,55 @@ int voltage_update(unsigned int module, unsigned char vddx_op_vol_sel)
 	return 0;
 }
 
+/* MYIR , only applicable in PG2.x. */
+unsigned int get_cpu_maxfreq(void)
+{
+#define CONTROL_MODULE_BASE 0x44E10000
+#define EFUSE_SMA    		(CONTROL_MODULE_BASE + 0x7FC)
+#define MPU_FREQ_MASK		0x1FFF
+	#define	MPU_MAX_FREQ_300M	0x1FEF
+	#define MPU_MAX_FREQ_600M	0x1FAF
+	#define MPU_MAX_FREQ_720M	0x1F2F
+	#define MPU_MAX_FREQ_800M	0x1E2F
+	#define MPU_MAX_FREQ_1000M	0x1C2F
+    #define MPU_MAX_FREQ_300M_ZCE   0x1FDF
+    #define MPU_MAX_FREQ_600M_ZCE   0x1F9F
+
+	unsigned int reg = __raw_readl(EFUSE_SMA);
+	
+	printf("EFUSE_SMA: 0x%08X, max freq reg: %#X\n", reg, reg&MPU_FREQ_MASK);
+
+	switch (reg&MPU_FREQ_MASK) {
+		case MPU_MAX_FREQ_300M:
+		case MPU_MAX_FREQ_300M_ZCE:
+			return MPUPLL_M_300;
+		case MPU_MAX_FREQ_600M:
+		case MPU_MAX_FREQ_600M_ZCE:
+			return MPUPLL_M_600;
+		case MPU_MAX_FREQ_720M:
+			return MPUPLL_M_720;
+		case MPU_MAX_FREQ_800M:
+			return MPUPLL_M_800;
+		case MPU_MAX_FREQ_1000M:
+			return MPUPLL_M_1000;
+		default:
+			return MPUPLL_M_800;
+	}
+
+}
+
 void spl_board_init(void)
 {
-/* modified by MYIR, we don't use tps65217 for power management. */
-#if 0
-	uchar pmic_status_reg;
-
-	/* Configure the i2c0 pin mux */
-	enable_i2c0_pin_mux();
-
-	i2c_init(CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE);
-	
-	uchar buf[4];
 	/*
-	 * EVM PMIC code.  All boards currently want an MPU voltage
-	 * of 1.2625V and CORE voltage of 1.1375V to operate at
-	 * 720MHz.
-	 */
-	if (i2c_probe(PMIC_CTRL_I2C_ADDR))
-		return;
+	 * We don't use PMIC on MYD-AM335X.
+     * Set MPU frequency according to EFUSE_SMA register.
+     * by MYIR.
+     */
+	unsigned int mpu_freq = get_cpu_maxfreq();
 
-	/* VDD1/2 voltage selection register access by control i/f */
-	if (i2c_read(PMIC_CTRL_I2C_ADDR, PMIC_DEVCTRL_REG, 1, buf, 1))
-		return;
+    printf("Set MPU freq to %d MHz\n", mpu_freq);
 
-	buf[0] |= PMIC_DEVCTRL_REG_SR_CTL_I2C_SEL_CTL_I2C;
-
-	if (i2c_write(PMIC_CTRL_I2C_ADDR, PMIC_DEVCTRL_REG, 1, buf, 1))
-		return;
-
-	/* add by embest */
-	if (i2c_read(PMIC_CTRL_I2C_ADDR, PMIC_VIO_REG, 1, buf, 1))
-		return;
-
-	buf[0] &= ~(0x3 << 2);	//VIO set to 1.5V
-
-	if (i2c_write(PMIC_CTRL_I2C_ADDR, PMIC_VIO_REG, 1, buf, 1))
-		return;
-	/* end add */
-
-	if (!voltage_update(MPU, PMIC_OP_REG_SEL_1_2_6) &&
-			!voltage_update(CORE, PMIC_OP_REG_SEL_1_1_3))
-		/* Frequency switching for OPP 120 */
- 		mpu_pll_config(MPUPLL_M_720);
-#endif
-	mpu_pll_config(MPUPLL_M_800);/* Added by MYIR, our chip is 800MHz */
+	mpu_pll_config(mpu_freq);
 }
 #endif
 
@@ -715,6 +719,7 @@ static void evm_phy_init(char *name, int addr)
 
 	miiphy_read(name, addr, MII_ADVERTISE, &val);
 
+#if 0 /* we don't do negotiation */
 	/* Restart auto negotiation*/
 	miiphy_read(name, addr, MII_BMCR, &val);
 	val |= BMCR_ANRESTART;
@@ -732,6 +737,7 @@ static void evm_phy_init(char *name, int addr)
 
 	if (cntr >= 250)
 		printf("Auto negotitation failed\n");
+#endif
 
 	return;
 }
