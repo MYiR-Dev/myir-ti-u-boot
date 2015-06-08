@@ -86,13 +86,13 @@ int do_led(cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 				//__raw_writel(0x0, 0x4804C134);
 				//__raw_writel(0x0C000000,0x4804C194);
 				__raw_writel(__raw_readl(GPIO3_OE)&~LED_BIT, GPIO3_OE);
-				__raw_writel(LED_BIT, GPIO3_SETDATAOUT);
+				__raw_writel(LED_BIT, GPIO3_CLEARDATAOUT);
 
 			} else if(strcmp(argv[1], "off") == 0) {
 				//__raw_writel(0x0, 0x4804C134);
 				//__raw_writel(0x0C000000, 0x4804C190);
                                 __raw_writel(__raw_readl(GPIO3_OE)&~LED_BIT, GPIO3_OE);
-                                __raw_writel(LED_BIT, GPIO3_CLEARDATAOUT);
+                                __raw_writel(LED_BIT, GPIO3_SETDATAOUT);
 			}
 			break;
 		case 1:          

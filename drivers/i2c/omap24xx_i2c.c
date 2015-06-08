@@ -54,6 +54,16 @@ static u32 i2c_base = (u32)I2C_DEFAULT_BASE;
 static unsigned int bus_initialized[I2C_BUS_MAX];
 static unsigned int current_bus;
 
+const u32 get_i2c_base(void)
+{
+	return i2c_base;
+}
+
+void set_i2c_base(const u32 base)
+{
+	i2c_base = base;
+}
+
 void i2c_init(int speed, int slaveadd)
 {
 	int psc, fsscll, fssclh;

@@ -322,6 +322,11 @@ static struct module_pin_mux myir_backlight_mux[] = {
         {-1},
 };
 
+static struct module_pin_mux myir_wdt_mux[] = {
+	        {OFFSET(emu1), (MODE(7) | PULLUDDIS | RXACTIVE)}, /* GPOI3_8, pull disable, input */
+			        {-1},
+};
+
 #ifndef CONFIG_NO_ETH
 static struct module_pin_mux rgmii1_pin_mux[] = {
 	{OFFSET(mii1_txen), MODE(2)},			/* RGMII1_TCTL */
@@ -501,7 +506,7 @@ static struct module_pin_mux spi1_pin_mux[] = {
  */
 static struct evm_pin_mux general_purpose_evm_pin_mux[] = {
 	{uart0_pin_mux, PROFILE_ALL, DEV_ON_BASEBOARD},
-	{i2c1_pin_mux, PROFILE_ALL & ~PROFILE_2 & ~PROFILE_4, DEV_ON_BASEBOARD},
+	{i2c1_pin_mux, PROFILE_ALL, DEV_ON_BASEBOARD}, /* Delete PROFILE_2 & PROFILE_4 */
 #ifdef CONFIG_NAND
 	{nand_pin_mux, PROFILE_ALL & ~PROFILE_2 & ~PROFILE_3, DEV_ON_DGHTR_BRD},
 #endif
@@ -705,5 +710,10 @@ void enable_uart0_pin_mux(void)
 void enable_backlight_pin_mux(void)
 {
 	configure_module_pin_mux(myir_backlight_mux);
+}
+
+void enable_wdt_pin_mux(void)
+{
+	    configure_module_pin_mux(myir_wdt_mux);
 }
 

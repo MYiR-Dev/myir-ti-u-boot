@@ -141,6 +141,12 @@ int i2c_mux_ident_muxstring_f (uchar *buf);
 int i2c_probe(uchar chip);
 
 /*
+ * Get and Set i2c base -- Added by JBO
+ */
+const u32 get_i2c_base(void);
+void set_i2c_base(const u32 base);
+
+/*
  * Read/Write interface:
  *   chip:    I2C chip address, range 0..127
  *   addr:    Memory (register) address within the chip

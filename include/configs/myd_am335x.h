@@ -41,11 +41,11 @@
 #define CONFIG_INITRD_TAG		/* Required for ramdisk support */
 
 /* set to negative value for no autoboot */
-#define CONFIG_BOOTDELAY		3
+#define CONFIG_BOOTDELAY		1
 
 #define CONFIG_MMC
 #define CONFIG_NAND
-#define CONFIG_SPI
+/* #define CONFIG_SPI */
 
 #if 1
 /* MYIR */
@@ -83,7 +83,7 @@
 	"nand_src_addr=0x280000\0" \
 	"spi_src_addr=0x62000\0" \
 	"nor_src_addr=0x08080000\0" \
-	"nand_img_siz=0x400000\0" \
+	"nand_img_siz=0x500000\0" \
 	"spi_img_siz=0x280000\0" \
 	"nor_img_siz=0x280000\0" \
 	"spi_bus_no=0\0" \
@@ -108,7 +108,7 @@
 		"rootfstype=${mmc_root_fs_type} ip=${ip_method}\0" \
 	"nand_args=run bootargs_defaults;" \
 		"setenv bootargs ${bootargs} " \
-		"root=${nand_root} noinitrd " \
+		"root=${nand_root} init=/init " \
 		"rootfstype=${nand_root_fs_type} ip=${ip_method}\0" \
 	"spi_args=run bootargs_defaults;" \
 		"setenv bootargs ${bootargs} " \

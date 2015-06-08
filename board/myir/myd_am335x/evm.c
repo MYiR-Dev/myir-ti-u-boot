@@ -36,6 +36,7 @@
 #include "common_def.h"
 #include "pmic.h"
 #include "tps65217.h"
+#include "myir_header.h"
 #include <i2c.h>
 #include <serial.h>
 
@@ -364,6 +365,7 @@ void spl_board_init(void)
  * Added by MYIR, turn off lcd backlight by setting GPIO0_2 output LOW.
  */
 extern void enable_backlight_pin_mux(void);
+extern void enable_wdt_pin_mux(void);
 static void myir_init_backlight()
 {
 #define SOC_PRCM_REGS                        (0x44E00000)
@@ -505,6 +507,7 @@ void s_init(void)
 
 	/* Added by MYIR, init LCD backlight(turn_off) */
 	myir_init_backlight();
+	enable_wdt_pin_mux();
 
 #ifdef CONFIG_SPL_BUILD
 	/* Setup the PLLs and the clocks for the peripherals */
@@ -574,12 +577,95 @@ struct serial_device *default_serial_console(void)
 }
 #endif
 
+/*
+ * LCD type -- JBO
+ */
+const char *lcd_type(void)
+{
+	static myir_header_t header;
+
+	memset(&header, '\0', sizeof(myir_header_t));
+	
+	if (get_header(&header))
+		return NULL;
+
+	return get_header_subtype(&header);
+}
+	
+/*
+ * LCD identify -- JBO
+ */
+void lcd_identify(void)
+{
+	char *env_optargs = getenv("optargs");
+	char *tmp = "";
+	if (!env_optargs)
+		env_optargs = tmp;
+	
+	int  optargs_len = strlen(env_optargs);
+	char *display = "board-am335xevm.display_mode=";
+	int  display_len = strlen(display);
+	char mode[14] = { '\0' };
+	char *type = NULL;
+	char *new_optargs = malloc(optargs_len + display_len + 24);
+	if (!new_optargs) {
+		printf("Alloc memory failed\n");
+		return;
+	}
+	
+	memset(new_optargs, '\0', optargs_len + display_len + 5);
+
+	int idx = 0;
+	int mode_idx = 0;
+	while (idx < optargs_len) {
+		if (env_optargs[idx] == ' ' || idx == 0) {
+			if (env_optargs[idx] == ' ') 
+				strncat(new_optargs, &env_optargs[idx++], 1);
+
+			if ((optargs_len - idx) >= display_len) {
+				if (strncmp(&env_optargs[idx], display, display_len) == 0) {
+					idx += display_len;
+					while (env_optargs[idx] != ' ' && env_optargs[idx] != '\0') {
+						if (mode_idx + 1 > 14) {
+							printf("The length of displaymode string is to long, should be smaller tha [14]\n");
+							break;
+						}
+						mode[mode_idx++] = env_optargs[idx++];
+					}
+					continue;
+				}
+			}
+		}
+		strncat(new_optargs, &env_optargs[idx++], 1);
+	}
+
+	if (strlen(new_optargs) > 1)
+		strncat(new_optargs, " ", 1);
+	
+	if (type = lcd_type()) {
+		strncat(new_optargs, display, display_len);
+		strncat(new_optargs, type, strlen(type));
+	} else if (mode_idx > 0) {
+		strncat(new_optargs, display, display_len);
+		strncat(new_optargs, mode, mode_idx);
+	}
+
+	setenv("optargs", new_optargs);
+	free(new_optargs);
+}
+
 int board_init(void)
 {
+	int i2c_base_old;
+	
 	/* Configure the i2c0 pin mux */
 	enable_i2c0_pin_mux();
 
+	i2c_base_old = get_i2c_base();
 	i2c_init(CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE);
+	set_i2c_base(0x4802A000);
+	i2c_init(CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE);
+	set_i2c_base(i2c_base_old);
 	
 	printf("Did not find a recognized configuration, "
 		"assuming General purpose EVM in Profile 0 with "
@@ -623,9 +709,12 @@ int misc_init_r(void)
 	debug("\tBoard config : %.6s\n\n", header.config);
 #endif
 
+	lcd_identify();
+
 #ifdef AUTO_UPDATESYS
         run_command("run updatesys", 0);
 #endif
+		
 	return 0;
 }
 
@@ -641,7 +730,7 @@ int board_late_init(void)
 		/* Change console to tty03 for IA Motor Control EVM */
 		setenv("console", "ttyO3,115200n8");
 	}
-
+	
 	return 0;
 }
 #endif
