@@ -191,7 +191,7 @@ static void config_vtp(void)
 static void config_emif_ddr3(void)
 {
 	u32 i;
-
+	
 	/*Program EMIF0 CFG Registers*/
 	__raw_writel(EMIF_READ_LATENCY, EMIF4_0_DDR_PHY_CTRL_1);
 	__raw_writel(EMIF_READ_LATENCY, EMIF4_0_DDR_PHY_CTRL_1_SHADOW);
@@ -781,14 +781,17 @@ static void evm_phy_init(char *name, int addr)
 	/*
 	 * The 1.0 revisions of the GP board don't have functional
 	 * gigabit ethernet so we need to disable advertising.
+	 *
+	 * MYIR need to disable gigabit ethernet advertising
+	 *
 	 */
-	if (board_id == GP_BOARD && !strncmp(header.version, "1.0", 3)) {
+//	if (board_id == GP_BOARD && !strncmp(header.version, "1.0", 3)) {
 		miiphy_read(name, addr, MII_CTRL1000, &val);
 		val &= ~PHY_1000BTCR_1000FD;
 		val &= ~PHY_1000BTCR_1000HD;
 		miiphy_write(name, addr, MII_CTRL1000, val);
 		miiphy_read(name, addr, MII_CTRL1000, &val);
-	}
+//	}
 
 	/* Setup general advertisement */
 	if (miiphy_read(name, addr, MII_ADVERTISE, &val) != 0) {
@@ -808,7 +811,6 @@ static void evm_phy_init(char *name, int addr)
 
 	miiphy_read(name, addr, MII_ADVERTISE, &val);
 
-#if 0 /* we don't do negotiation */
 	/* Restart auto negotiation*/
 	miiphy_read(name, addr, MII_BMCR, &val);
 	val |= BMCR_ANRESTART;
@@ -826,7 +828,6 @@ static void evm_phy_init(char *name, int addr)
 
 	if (cntr >= 250)
 		printf("Auto negotitation failed\n");
-#endif
 
 	return;
 }
@@ -842,13 +843,17 @@ static struct cpsw_slave_data cpsw_slaves[] = {
 	{
 		.slave_reg_ofs	= 0x208,	
 		.sliver_reg_ofs	= 0xd80,
-		.phy_id		= 4/*0*/,/* modified by MYIR */
+		.phy_id		= 4/* modified by MYIR, was 0 */,
 	},
+
+/* commented by MYIR, we only use eth0 in u-boot */
+#if 0
 	{
 		.slave_reg_ofs	= 0x308,
 		.sliver_reg_ofs	= 0xdc0,
 		.phy_id		= 6/*2*/,/* Modified by MYIR */
 	},
+#endif
 };
 
 static struct cpsw_platform_data cpsw_data = {
@@ -857,7 +862,7 @@ static struct cpsw_platform_data cpsw_data = {
 	.mdio_div		= 0xff,
 	.channels		= 8,
 	.cpdma_reg_ofs		= 0x800,
-	.slaves			= 2,
+	.slaves			= sizeof(cpsw_slaves)/sizeof(cpsw_slaves[0])/*MYIR, was 2*/,
 	.slave_data		= cpsw_slaves,
 	.ale_reg_ofs		= 0xd00,
 	.ale_entries		= 1024,
@@ -866,7 +871,7 @@ static struct cpsw_platform_data cpsw_data = {
 	.mac_control		= (1 << 5) /* MIIEN */,
 	.control		= cpsw_control,
 	.phy_init		= evm_phy_init,
-	.gigabit_en		= 1,
+	.gigabit_en		= 0,
 	.host_port_num		= 0,
 	.version		= CPSW_CTRL_VERSION_2,
 };
@@ -908,7 +913,6 @@ int board_eth_init(bd_t *bis)
 	/* set mii mode to rgmii in in device configure register */
 	__raw_writel(RGMII_MODE_ENABLE, MAC_MII_SEL);
 	
-
 	cpsw_data.gigabit_en = 0;
 
 	return cpsw_register(&cpsw_data);
