@@ -38,7 +38,7 @@
 #include "tps65217.h"
 #include <i2c.h>
 #include <serial.h>
-#include "myir_header.h" /* Add for MY-TFT070-K LCD */
+#include "myir_header.h"
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -74,6 +74,46 @@ DECLARE_GLOBAL_DATA_PTR;
 
 #define NO_OF_MAC_ADDR          3
 #define ETH_ALEN		6
+
+/* DDR Base address */
+#define DDR_CTRL_ADDR						0x44E10E04
+#define DDR_CONTROL_BASE_ADDR				0x44E11404
+#define DDR_CKE_CTRL_NORMAL					0x1
+
+/* DDR Base address */
+#define DDR_PHY_CMD_ADDR					0x44E12000
+#define DDR_PHY_DATA_ADDR					0x44E120C8
+#define DDR_PHY_CMD_ADDR2					0x47C0C800
+#define DDR_PHY_DATA_ADDR2					0x47C0C8C8
+#define DDR_DATA_REGS_NR					2
+
+/* SDRAM_REF_CTRL */
+#define EMIF_REG_INITREF_DIS_SHIFT			31
+#define EMIF_REG_INITREF_DIS_MASK			(1 << 31)
+#define EMIF_REG_SRT_SHIFT					29
+#define EMIF_REG_SRT_MASK					(1 << 29)
+#define EMIF_REG_ASR_SHIFT					28
+#define EMIF_REG_ASR_MASK					(1 << 28)
+#define EMIF_REG_PASR_SHIFT					24
+#define EMIF_REG_PASR_MASK					(0x7 << 24)
+#define EMIF_REG_REFRESH_RATE_SHIFT			0
+#define EMIF_REG_REFRESH_RATE_MASK			(0xffff << 0)
+
+/* Micron MT41K256M16HA-125E */
+#define MT41K256M16HA125E_EMIF_READ_LATENCY	0x100007
+#define MT41K256M16HA125E_EMIF_TIM1			0x0AAAD4DB
+#define MT41K256M16HA125E_EMIF_TIM2			0x266B7FDA
+#define MT41K256M16HA125E_EMIF_TIM3			0x501F867F
+#define MT41K256M16HA125E_EMIF_SDCFG		0x61C05332
+#define MT41K256M16HA125E_EMIF_SDREF		0xC30
+#define MT41K256M16HA125E_ZQ_CFG			0x50074BE4
+#define MT41K256M16HA125E_RATIO				0x80
+#define MT41K256M16HA125E_INVERT_CLKOUT		0x0
+#define MT41K256M16HA125E_RD_DQS			0x38
+#define MT41K256M16HA125E_WR_DQS			0x44
+#define MT41K256M16HA125E_PHY_WR_DATA		0x7D
+#define MT41K256M16HA125E_PHY_FIFO_WE		0x94
+#define MT41K256M16HA125E_IOCTRL_VALUE		0x18B
 
 struct am335x_baseboard_id {
 	unsigned int  magic;
@@ -175,19 +215,1015 @@ static void Cmd_Macro_Config(void)
 	__raw_writel(DDR3_INVERT_CLKOUT, CMD2_INVERT_CLKOUT_0);
 }
 
-static void config_vtp(void)
+/*************************** VTP configure, MYiR *************************/
+/* VTP Base address */
+#define VTP0_CTRL_ADDR			0x44E10E0C
+#define VTP1_CTRL_ADDR			0x48140E10
+
+/* VTP Registers */
+struct vtp_reg {
+	unsigned int vtp0ctrlreg;
+};
+
+
+static struct vtp_reg *vtpreg[2] = {
+				(struct vtp_reg *)VTP0_CTRL_ADDR,
+				(struct vtp_reg *)VTP1_CTRL_ADDR};
+
+/**
+ * Base address for EMIF instances
+ */
+static struct emif_reg_struct *emif_reg[2] = {
+				(struct emif_reg_struct *)EMIF4_0_CFG_BASE,
+				(struct emif_reg_struct *)EMIF4_1_CFG_BASE};
+/**
+ * Base addresses for DDR PHY cmd/data regs
+ */
+static struct ddr_cmd_regs *ddr_cmd_reg[2] = {
+				(struct ddr_cmd_regs *)DDR_PHY_CMD_ADDR,
+				(struct ddr_cmd_regs *)DDR_PHY_CMD_ADDR2};
+
+static struct ddr_data_regs *ddr_data_reg[2] = {
+				(struct ddr_data_regs *)DDR_PHY_DATA_ADDR,
+				(struct ddr_data_regs *)DDR_PHY_DATA_ADDR2};	
+				
+
+static void config_vtp(int nr)
 {
-	__raw_writel(__raw_readl(VTP0_CTRL_REG) | VTP_CTRL_ENABLE,
-			VTP0_CTRL_REG);
-	__raw_writel(__raw_readl(VTP0_CTRL_REG) & (~VTP_CTRL_START_EN),
-			VTP0_CTRL_REG);
-	__raw_writel(__raw_readl(VTP0_CTRL_REG) | VTP_CTRL_START_EN,
-			VTP0_CTRL_REG);
+	writel(readl(&vtpreg[nr]->vtp0ctrlreg) | VTP_CTRL_ENABLE,
+			&vtpreg[nr]->vtp0ctrlreg);
+	writel(readl(&vtpreg[nr]->vtp0ctrlreg) & (~VTP_CTRL_START_EN),
+			&vtpreg[nr]->vtp0ctrlreg);
+	writel(readl(&vtpreg[nr]->vtp0ctrlreg) | VTP_CTRL_START_EN,
+			&vtpreg[nr]->vtp0ctrlreg);
 
 	/* Poll for READY */
-	while ((__raw_readl(VTP0_CTRL_REG) & VTP_CTRL_READY) != VTP_CTRL_READY);
+	while ((readl(&vtpreg[nr]->vtp0ctrlreg) & VTP_CTRL_READY) !=
+			VTP_CTRL_READY)
+		;
 }
 
+/*********************** Add by MYiR ***********************************/
+
+/**
+ * This structure represents the DDR io control on AM33XX devices.
+ */
+struct ctrl_ioregs {
+	unsigned int cm0ioctl;
+	unsigned int cm1ioctl;
+	unsigned int cm2ioctl;
+	unsigned int dt0ioctl;
+	unsigned int dt1ioctl;
+	unsigned int dt2ioctrl;
+	unsigned int dt3ioctrl;
+	unsigned int emif_sdram_config_ext;
+};
+
+
+/**
+ * Encapsulates DDR DATA registers.
+ */
+struct ddr_data {
+	unsigned long datardsratio0;
+	unsigned long datawdsratio0;
+	unsigned long datawiratio0;
+	unsigned long datagiratio0;
+	unsigned long datafwsratio0;
+	unsigned long datawrsratio0;
+};
+
+/**
+ * Encapsulates DDR CMD control registers.
+ */
+struct cmd_control {
+	unsigned long cmd0csratio;
+	unsigned long cmd0csforce;
+	unsigned long cmd0csdelay;
+	unsigned long cmd0iclkout;
+	unsigned long cmd1csratio;
+	unsigned long cmd1csforce;
+	unsigned long cmd1csdelay;
+	unsigned long cmd1iclkout;
+	unsigned long cmd2csratio;
+	unsigned long cmd2csforce;
+	unsigned long cmd2csdelay;
+	unsigned long cmd2iclkout;
+};
+
+struct ddr_ctrl {
+	unsigned int ddrioctrl;
+	unsigned int resv1[325];
+	unsigned int ddrckectrl;
+};
+
+struct ddr_cmd_regs {
+	unsigned int resv0[7];
+	unsigned int cm0csratio;	/* offset 0x01C */
+	unsigned int resv1[3];
+	unsigned int cm0iclkout;	/* offset 0x02C */
+	unsigned int resv2[8];
+	unsigned int cm1csratio;	/* offset 0x050 */
+	unsigned int resv3[3];
+	unsigned int cm1iclkout;	/* offset 0x060 */
+	unsigned int resv4[8];
+	unsigned int cm2csratio;	/* offset 0x084 */
+	unsigned int resv5[3];
+	unsigned int cm2iclkout;	/* offset 0x094 */
+	unsigned int resv6[3];
+};
+
+struct ddr_data_regs {
+	unsigned int dt0rdsratio0;	/* offset 0x0C8 */
+	unsigned int resv1[4];
+	unsigned int dt0wdsratio0;	/* offset 0x0DC */
+	unsigned int resv2[4];
+	unsigned int dt0wiratio0;	/* offset 0x0F0 */
+	unsigned int resv3;
+	unsigned int dt0wimode0;	/* offset 0x0F8 */
+	unsigned int dt0giratio0;	/* offset 0x0FC */
+	unsigned int resv4;
+	unsigned int dt0gimode0;	/* offset 0x104 */
+	unsigned int dt0fwsratio0;	/* offset 0x108 */
+	unsigned int resv5[4];
+	unsigned int dt0dqoffset;	/* offset 0x11C */
+	unsigned int dt0wrsratio0;	/* offset 0x120 */
+	unsigned int resv6[4];
+	unsigned int dt0rdelays0;	/* offset 0x134 */
+	unsigned int dt0dldiff0;	/* offset 0x138 */
+	unsigned int resv7[12];
+};
+
+/*
+ * Structure containing shadow of important registers in EMIF
+ * The calculation function fills in this structure to be later used for
+ * initialization and DVFS
+ */
+struct emif_regs {
+	unsigned int freq;
+	unsigned int sdram_config_init;
+	unsigned int sdram_config;
+	unsigned int sdram_config2;
+	unsigned int ref_ctrl;
+	unsigned int sdram_tim1;
+	unsigned int sdram_tim2;
+	unsigned int sdram_tim3;
+	unsigned int read_idle_ctrl;
+	unsigned int zq_config;
+	unsigned int temp_alert_config;
+	unsigned int emif_ddr_phy_ctlr_1_init;
+	unsigned int emif_ddr_phy_ctlr_1;
+	unsigned int emif_ddr_ext_phy_ctrl_1;
+	unsigned int emif_ddr_ext_phy_ctrl_2;
+	unsigned int emif_ddr_ext_phy_ctrl_3;
+	unsigned int emif_ddr_ext_phy_ctrl_4;
+	unsigned int emif_ddr_ext_phy_ctrl_5;
+	unsigned int emif_rd_wr_lvl_rmp_win;
+	unsigned int emif_rd_wr_lvl_rmp_ctl;
+	unsigned int emif_rd_wr_lvl_ctl;
+	unsigned int emif_rd_wr_exec_thresh;
+	unsigned int emif_prio_class_serv_map;
+	unsigned int emif_connect_id_serv_1_map;
+	unsigned int emif_connect_id_serv_2_map;
+	unsigned int emif_cos_config;
+};
+
+/**
+ * This structure represents the DDR io control on AM33XX devices.
+ */
+struct ddr_cmdtctrl {
+	unsigned int cm0ioctl;
+	unsigned int cm1ioctl;
+	unsigned int cm2ioctl;
+	unsigned int resv2[12];
+	unsigned int dt0ioctl;
+	unsigned int dt1ioctl;
+	unsigned int dt2ioctrl;
+	unsigned int dt3ioctrl;
+	unsigned int resv3[4];
+	unsigned int emif_sdram_config_ext;
+};
+
+/* Reg mapping structure */
+struct emif_reg_struct {
+	u32 emif_mod_id_rev;
+	u32 emif_status;
+	u32 emif_sdram_config;
+	u32 emif_lpddr2_nvm_config;
+	u32 emif_sdram_ref_ctrl;
+	u32 emif_sdram_ref_ctrl_shdw;
+	u32 emif_sdram_tim_1;
+	u32 emif_sdram_tim_1_shdw;
+	u32 emif_sdram_tim_2;
+	u32 emif_sdram_tim_2_shdw;
+	u32 emif_sdram_tim_3;
+	u32 emif_sdram_tim_3_shdw;
+	u32 emif_lpddr2_nvm_tim;
+	u32 emif_lpddr2_nvm_tim_shdw;
+	u32 emif_pwr_mgmt_ctrl;
+	u32 emif_pwr_mgmt_ctrl_shdw;
+	u32 emif_lpddr2_mode_reg_data;
+	u32 padding1[1];
+	u32 emif_lpddr2_mode_reg_data_es2;
+	u32 padding11[1];
+	u32 emif_lpddr2_mode_reg_cfg;
+	u32 emif_l3_config;
+	u32 emif_l3_cfg_val_1;
+	u32 emif_l3_cfg_val_2;
+	u32 emif_iodft_tlgc;
+	u32 padding2[7];
+	u32 emif_perf_cnt_1;
+	u32 emif_perf_cnt_2;
+	u32 emif_perf_cnt_cfg;
+	u32 emif_perf_cnt_sel;
+	u32 emif_perf_cnt_tim;
+	u32 padding3;
+	u32 emif_read_idlectrl;
+	u32 emif_read_idlectrl_shdw;
+	u32 padding4;
+	u32 emif_irqstatus_raw_sys;
+	u32 emif_irqstatus_raw_ll;
+	u32 emif_irqstatus_sys;
+	u32 emif_irqstatus_ll;
+	u32 emif_irqenable_set_sys;
+	u32 emif_irqenable_set_ll;
+	u32 emif_irqenable_clr_sys;
+	u32 emif_irqenable_clr_ll;
+	u32 padding5;
+	u32 emif_zq_config;
+	u32 emif_temp_alert_config;
+	u32 emif_l3_err_log;
+	u32 emif_rd_wr_lvl_rmp_win;
+	u32 emif_rd_wr_lvl_rmp_ctl;
+	u32 emif_rd_wr_lvl_ctl;
+	u32 padding6[1];
+	u32 emif_ddr_phy_ctrl_1;
+	u32 emif_ddr_phy_ctrl_1_shdw;
+	u32 emif_ddr_phy_ctrl_2;
+	u32 padding7[4];
+	u32 emif_prio_class_serv_map;
+	u32 emif_connect_id_serv_1_map;
+	u32 emif_connect_id_serv_2_map;
+	u32 padding8[5];
+	u32 emif_rd_wr_exec_thresh;
+	u32 emif_cos_config;
+	u32 padding9[6];
+	u32 emif_ddr_phy_status[21];
+	u32 padding10[27];
+	u32 emif_ddr_ext_phy_ctrl_1;
+	u32 emif_ddr_ext_phy_ctrl_1_shdw;
+	u32 emif_ddr_ext_phy_ctrl_2;
+	u32 emif_ddr_ext_phy_ctrl_2_shdw;
+	u32 emif_ddr_ext_phy_ctrl_3;
+	u32 emif_ddr_ext_phy_ctrl_3_shdw;
+	u32 emif_ddr_ext_phy_ctrl_4;
+	u32 emif_ddr_ext_phy_ctrl_4_shdw;
+	u32 emif_ddr_ext_phy_ctrl_5;
+	u32 emif_ddr_ext_phy_ctrl_5_shdw;
+	u32 emif_ddr_ext_phy_ctrl_6;
+	u32 emif_ddr_ext_phy_ctrl_6_shdw;
+	u32 emif_ddr_ext_phy_ctrl_7;
+	u32 emif_ddr_ext_phy_ctrl_7_shdw;
+	u32 emif_ddr_ext_phy_ctrl_8;
+	u32 emif_ddr_ext_phy_ctrl_8_shdw;
+	u32 emif_ddr_ext_phy_ctrl_9;
+	u32 emif_ddr_ext_phy_ctrl_9_shdw;
+	u32 emif_ddr_ext_phy_ctrl_10;
+	u32 emif_ddr_ext_phy_ctrl_10_shdw;
+	u32 emif_ddr_ext_phy_ctrl_11;
+	u32 emif_ddr_ext_phy_ctrl_11_shdw;
+	u32 emif_ddr_ext_phy_ctrl_12;
+	u32 emif_ddr_ext_phy_ctrl_12_shdw;
+	u32 emif_ddr_ext_phy_ctrl_13;
+	u32 emif_ddr_ext_phy_ctrl_13_shdw;
+	u32 emif_ddr_ext_phy_ctrl_14;
+	u32 emif_ddr_ext_phy_ctrl_14_shdw;
+	u32 emif_ddr_ext_phy_ctrl_15;
+	u32 emif_ddr_ext_phy_ctrl_15_shdw;
+	u32 emif_ddr_ext_phy_ctrl_16;
+	u32 emif_ddr_ext_phy_ctrl_16_shdw;
+	u32 emif_ddr_ext_phy_ctrl_17;
+	u32 emif_ddr_ext_phy_ctrl_17_shdw;
+	u32 emif_ddr_ext_phy_ctrl_18;
+	u32 emif_ddr_ext_phy_ctrl_18_shdw;
+	u32 emif_ddr_ext_phy_ctrl_19;
+	u32 emif_ddr_ext_phy_ctrl_19_shdw;
+	u32 emif_ddr_ext_phy_ctrl_20;
+	u32 emif_ddr_ext_phy_ctrl_20_shdw;
+	u32 emif_ddr_ext_phy_ctrl_21;
+	u32 emif_ddr_ext_phy_ctrl_21_shdw;
+	u32 emif_ddr_ext_phy_ctrl_22;
+	u32 emif_ddr_ext_phy_ctrl_22_shdw;
+	u32 emif_ddr_ext_phy_ctrl_23;
+	u32 emif_ddr_ext_phy_ctrl_23_shdw;
+	u32 emif_ddr_ext_phy_ctrl_24;
+	u32 emif_ddr_ext_phy_ctrl_24_shdw;
+	u32 padding[22];
+	u32 emif_ddr_fifo_misaligned_clear_1;
+	u32 emif_ddr_fifo_misaligned_clear_2;
+};
+
+static struct ddr_ctrl *ddrctrl = (struct ddr_ctrl *)DDR_CTRL_ADDR;
+
+
+const struct ctrl_ioregs ioregs_bonelt = {
+	.cm0ioctl		= MT41K256M16HA125E_IOCTRL_VALUE,
+	.cm1ioctl		= MT41K256M16HA125E_IOCTRL_VALUE,
+	.cm2ioctl		= MT41K256M16HA125E_IOCTRL_VALUE,
+	.dt0ioctl		= MT41K256M16HA125E_IOCTRL_VALUE,
+	.dt1ioctl		= MT41K256M16HA125E_IOCTRL_VALUE,
+};
+
+static const struct ddr_data ddr3_beagleblack_data = {
+	.datardsratio0 = MT41K256M16HA125E_RD_DQS,
+	.datawdsratio0 = MT41K256M16HA125E_WR_DQS,
+	.datafwsratio0 = MT41K256M16HA125E_PHY_FIFO_WE,
+	.datawrsratio0 = MT41K256M16HA125E_PHY_WR_DATA,
+};
+
+static const struct cmd_control ddr3_beagleblack_cmd_ctrl_data = {
+	.cmd0csratio = MT41K256M16HA125E_RATIO,
+	.cmd0iclkout = MT41K256M16HA125E_INVERT_CLKOUT,
+
+	.cmd1csratio = MT41K256M16HA125E_RATIO,
+	.cmd1iclkout = MT41K256M16HA125E_INVERT_CLKOUT,
+
+	.cmd2csratio = MT41K256M16HA125E_RATIO,
+	.cmd2iclkout = MT41K256M16HA125E_INVERT_CLKOUT,
+};
+
+
+static struct emif_regs ddr3_beagleblack_emif_reg_data = {
+	.sdram_config = MT41K256M16HA125E_EMIF_SDCFG,
+	.ref_ctrl = MT41K256M16HA125E_EMIF_SDREF,
+	.sdram_tim1 = MT41K256M16HA125E_EMIF_TIM1,
+	.sdram_tim2 = MT41K256M16HA125E_EMIF_TIM2,
+	.sdram_tim3 = MT41K256M16HA125E_EMIF_TIM3,
+	.zq_config = MT41K256M16HA125E_ZQ_CFG,
+	.emif_ddr_phy_ctlr_1 = MT41K256M16HA125E_EMIF_READ_LATENCY,
+};
+
+/**
+ * Base address for ddr io control instances
+ */
+static struct ddr_cmdtctrl *ioctrl_reg = {
+			(struct ddr_cmdtctrl *)DDR_CONTROL_BASE_ADDR
+};
+
+/**
+ * Configure DDR PHY
+ */
+static void config_ddr_phy(const struct emif_regs *regs, int nr)
+{
+	/*
+	 * disable initialization and refreshes for now until we
+	 * finish programming EMIF regs.
+	 */
+	setbits_le32(&emif_reg[nr]->emif_sdram_ref_ctrl, 
+		EMIF_REG_INITREF_DIS_MASK);
+
+	writel(regs->emif_ddr_phy_ctlr_1,
+		&emif_reg[nr]->emif_ddr_phy_ctrl_1);
+	writel(regs->emif_ddr_phy_ctlr_1,
+		&emif_reg[nr]->emif_ddr_phy_ctrl_1_shdw);
+}
+
+/**
+ * Configure DDR CMD control registers
+ */
+static void config_cmd_ctrl(const struct cmd_control *cmd, int nr)
+{
+	if (!cmd)
+		return;
+
+	writel(cmd->cmd0csratio, &ddr_cmd_reg[nr]->cm0csratio);
+	writel(cmd->cmd0iclkout, &ddr_cmd_reg[nr]->cm0iclkout);
+
+	writel(cmd->cmd1csratio, &ddr_cmd_reg[nr]->cm1csratio);
+	writel(cmd->cmd1iclkout, &ddr_cmd_reg[nr]->cm1iclkout);
+
+	writel(cmd->cmd2csratio, &ddr_cmd_reg[nr]->cm2csratio);
+	writel(cmd->cmd2iclkout, &ddr_cmd_reg[nr]->cm2iclkout);
+}
+
+/**
+ * Configure DDR DATA registers
+ */
+static void config_ddr_data(const struct ddr_data *data, int nr)
+{
+	int i;
+
+	if (!data)
+		return;
+
+	for (i = 0; i < DDR_DATA_REGS_NR; i++) {
+		writel(data->datardsratio0,
+			&(ddr_data_reg[nr]+i)->dt0rdsratio0);
+		writel(data->datawdsratio0,
+			&(ddr_data_reg[nr]+i)->dt0wdsratio0);
+		writel(data->datawiratio0,
+			&(ddr_data_reg[nr]+i)->dt0wiratio0);
+		writel(data->datagiratio0,
+			&(ddr_data_reg[nr]+i)->dt0giratio0);
+		writel(data->datafwsratio0,
+			&(ddr_data_reg[nr]+i)->dt0fwsratio0);
+		writel(data->datawrsratio0,
+			&(ddr_data_reg[nr]+i)->dt0wrsratio0);
+	}
+}
+
+static void config_io_ctrl(const struct ctrl_ioregs *ioregs)
+{
+	if (!ioregs)
+		return;
+
+	writel(ioregs->cm0ioctl, &ioctrl_reg->cm0ioctl);
+	writel(ioregs->cm1ioctl, &ioctrl_reg->cm1ioctl);
+	writel(ioregs->cm2ioctl, &ioctrl_reg->cm2ioctl);
+	writel(ioregs->dt0ioctl, &ioctrl_reg->dt0ioctl);
+	writel(ioregs->dt1ioctl, &ioctrl_reg->dt1ioctl);
+#ifdef CONFIG_AM43XX
+	writel(ioregs->dt2ioctrl, &ioctrl_reg->dt2ioctrl);
+	writel(ioregs->dt3ioctrl, &ioctrl_reg->dt3ioctrl);
+	writel(ioregs->emif_sdram_config_ext,
+	       &ioctrl_reg->emif_sdram_config_ext);
+#endif
+}
+
+
+/**
+ * Set SDRAM timings
+ */
+static void set_sdram_timings(const struct emif_regs *regs, int nr)
+{
+	writel(regs->sdram_tim1, &emif_reg[nr]->emif_sdram_tim_1);
+	writel(regs->sdram_tim1, &emif_reg[nr]->emif_sdram_tim_1_shdw);
+	writel(regs->sdram_tim2, &emif_reg[nr]->emif_sdram_tim_2);
+	writel(regs->sdram_tim2, &emif_reg[nr]->emif_sdram_tim_2_shdw);
+	writel(regs->sdram_tim3, &emif_reg[nr]->emif_sdram_tim_3);
+	writel(regs->sdram_tim3, &emif_reg[nr]->emif_sdram_tim_3_shdw);
+}			
+
+/* Control Status Register */
+struct ctrl_stat {
+	unsigned int resv1[16];
+	unsigned int statusreg;		/* ofset 0x40 */
+	unsigned int resv2[51];
+	unsigned int secure_emif_sdram_config;	/* offset 0x0110 */
+	unsigned int resv3[319];
+	unsigned int dev_attr;
+};
+
+struct ctrl_stat *cstat = (struct ctrl_stat *)CTRL_BASE;
+
+/**
+ * Configure SDRAM
+ */
+static void config_sdram(const struct emif_regs *regs, int nr)
+{
+	if (regs->zq_config) {
+		/*
+		 * A value of 0x2800 for the REF CTRL will give us
+		 * about 570us for a delay, which will be long enough
+		 * to configure things.
+		 */
+		writel(0x2800, &emif_reg[nr]->emif_sdram_ref_ctrl);
+		writel(regs->zq_config, &emif_reg[nr]->emif_zq_config);
+		writel(regs->sdram_config, &cstat->secure_emif_sdram_config);
+		writel(regs->sdram_config, &emif_reg[nr]->emif_sdram_config);
+		writel(regs->ref_ctrl, &emif_reg[nr]->emif_sdram_ref_ctrl);
+		writel(regs->ref_ctrl, &emif_reg[nr]->emif_sdram_ref_ctrl_shdw);
+	}
+	writel(regs->ref_ctrl, &emif_reg[nr]->emif_sdram_ref_ctrl);
+	writel(regs->ref_ctrl, &emif_reg[nr]->emif_sdram_ref_ctrl_shdw);
+	writel(regs->sdram_config, &emif_reg[nr]->emif_sdram_config);
+}
+
+
+void config_ddr(unsigned int pll, const struct ctrl_ioregs *ioregs,
+		const struct ddr_data *data, const struct cmd_control *ctrl,
+		const struct emif_regs *regs, int nr)
+{
+	//ddr_pll_config(pll);
+//#ifndef CONFIG_TI816X
+	config_vtp(nr);
+//#endif
+	config_cmd_ctrl(ctrl, nr);
+
+	config_ddr_data(data, nr);
+	
+//#ifdef CONFIG_AM33XX
+	config_io_ctrl(ioregs);
+
+	/* Set CKE to be controlled by EMIF/DDR PHY */
+	writel(DDR_CKE_CTRL_NORMAL, &ddrctrl->ddrckectrl);
+//#endif
+
+	/* Program EMIF instance */
+	config_ddr_phy(regs, nr);
+	set_sdram_timings(regs, nr);
+	config_sdram(regs, nr);
+}
+
+
+static void config_am335x_ddr(void)
+{
+
+	config_ddr(400, &ioregs_bonelt,
+		   &ddr3_beagleblack_data,
+		   &ddr3_beagleblack_cmd_ctrl_data,
+		   &ddr3_beagleblack_emif_reg_data, 0);
+}
+
+/*
+* clock 
+*/
+/*
+ * Encapsulating peripheral functional clocks
+ * pll registers
+ */
+/* Encapsulating core pll registers */
+struct cm_wkuppll {
+	unsigned int wkclkstctrl;	/* offset 0x00 */
+	unsigned int wkctrlclkctrl; /* offset 0x04 */
+	unsigned int wkgpio0clkctrl;	/* offset 0x08 */
+	unsigned int wkl4wkclkctrl; /* offset 0x0c */
+	unsigned int timer0clkctrl; /* offset 0x10 */
+	unsigned int resv2[3];
+	unsigned int idlestdpllmpu; /* offset 0x20 */
+	unsigned int resv3[2];
+	unsigned int clkseldpllmpu; /* offset 0x2c */
+	unsigned int resv4[1];
+	unsigned int idlestdpllddr; /* offset 0x34 */
+	unsigned int resv5[2];
+	unsigned int clkseldpllddr; /* offset 0x40 */
+	unsigned int resv6[4];
+	unsigned int clkseldplldisp;	/* offset 0x54 */
+	unsigned int resv7[1];
+	unsigned int idlestdpllcore;	/* offset 0x5c */
+	unsigned int resv8[2];
+	unsigned int clkseldpllcore;	/* offset 0x68 */
+	unsigned int resv9[1];
+	unsigned int idlestdpllper; /* offset 0x70 */
+	unsigned int resv10[2];
+	unsigned int clkdcoldodpllper;	/* offset 0x7c */
+	unsigned int divm4dpllcore; /* offset 0x80 */
+	unsigned int divm5dpllcore; /* offset 0x84 */
+	unsigned int clkmoddpllmpu; /* offset 0x88 */
+	unsigned int clkmoddpllper; /* offset 0x8c */
+	unsigned int clkmoddpllcore;	/* offset 0x90 */
+	unsigned int clkmoddpllddr; /* offset 0x94 */
+	unsigned int clkmoddplldisp;	/* offset 0x98 */
+	unsigned int clkseldpllper; /* offset 0x9c */
+	unsigned int divm2dpllddr;	/* offset 0xA0 */
+	unsigned int divm2dplldisp; /* offset 0xA4 */
+	unsigned int divm2dpllmpu;	/* offset 0xA8 */
+	unsigned int divm2dpllper;	/* offset 0xAC */
+	unsigned int resv11[1];
+	unsigned int wkup_uart0ctrl;	/* offset 0xB4 */
+	unsigned int wkup_i2c0ctrl; /* offset 0xB8 */
+	unsigned int wkup_adctscctrl;	/* offset 0xBC */
+	unsigned int resv12;
+	unsigned int timer1clkctrl; /* offset 0xC4 */
+	unsigned int resv13[4];
+	unsigned int divm6dpllcore; /* offset 0xD8 */
+};
+
+/**
+ * Encapsulating peripheral functional clocks
+ * pll registers
+ */
+struct cm_perpll {
+	unsigned int l4lsclkstctrl; /* offset 0x00 */
+	unsigned int l3sclkstctrl;	/* offset 0x04 */
+	unsigned int l4fwclkstctrl; /* offset 0x08 */
+	unsigned int l3clkstctrl;	/* offset 0x0c */
+	unsigned int resv1;
+	unsigned int cpgmac0clkctrl;	/* offset 0x14 */
+	unsigned int lcdclkctrl;	/* offset 0x18 */
+	unsigned int usb0clkctrl;	/* offset 0x1C */
+	unsigned int resv2;
+	unsigned int tptc0clkctrl;	/* offset 0x24 */
+	unsigned int emifclkctrl;	/* offset 0x28 */
+	unsigned int ocmcramclkctrl;	/* offset 0x2c */
+	unsigned int gpmcclkctrl;	/* offset 0x30 */
+	unsigned int mcasp0clkctrl; /* offset 0x34 */
+	unsigned int uart5clkctrl;	/* offset 0x38 */
+	unsigned int mmc0clkctrl;	/* offset 0x3C */
+	unsigned int elmclkctrl;	/* offset 0x40 */
+	unsigned int i2c2clkctrl;	/* offset 0x44 */
+	unsigned int i2c1clkctrl;	/* offset 0x48 */
+	unsigned int spi0clkctrl;	/* offset 0x4C */
+	unsigned int spi1clkctrl;	/* offset 0x50 */
+	unsigned int resv3[3];
+	unsigned int l4lsclkctrl;	/* offset 0x60 */
+	unsigned int l4fwclkctrl;	/* offset 0x64 */
+	unsigned int mcasp1clkctrl; /* offset 0x68 */
+	unsigned int uart1clkctrl;	/* offset 0x6C */
+	unsigned int uart2clkctrl;	/* offset 0x70 */
+	unsigned int uart3clkctrl;	/* offset 0x74 */
+	unsigned int uart4clkctrl;	/* offset 0x78 */
+	unsigned int timer7clkctrl; /* offset 0x7C */
+	unsigned int timer2clkctrl; /* offset 0x80 */
+	unsigned int timer3clkctrl; /* offset 0x84 */
+	unsigned int timer4clkctrl; /* offset 0x88 */
+	unsigned int resv4[8];
+	unsigned int gpio1clkctrl;	/* offset 0xAC */
+	unsigned int gpio2clkctrl;	/* offset 0xB0 */
+	unsigned int gpio3clkctrl;	/* offset 0xB4 */
+	unsigned int resv5;
+	unsigned int tpccclkctrl;	/* offset 0xBC */
+	unsigned int dcan0clkctrl;	/* offset 0xC0 */
+	unsigned int dcan1clkctrl;	/* offset 0xC4 */
+	unsigned int resv6;
+	unsigned int epwmss1clkctrl;	/* offset 0xCC */
+	unsigned int emiffwclkctrl; /* offset 0xD0 */
+	unsigned int epwmss0clkctrl;	/* offset 0xD4 */
+	unsigned int epwmss2clkctrl;	/* offset 0xD8 */
+	unsigned int l3instrclkctrl;	/* offset 0xDC */
+	unsigned int l3clkctrl; 	/* Offset 0xE0 */
+	unsigned int resv8[2];
+	unsigned int timer5clkctrl; /* offset 0xEC */
+	unsigned int timer6clkctrl; /* offset 0xF0 */
+	unsigned int mmc1clkctrl;	/* offset 0xF4 */
+	unsigned int mmc2clkctrl;	/* offset 0xF8 */
+	unsigned int resv9[8];
+	unsigned int l4hsclkstctrl; /* offset 0x11C */
+	unsigned int l4hsclkctrl;	/* offset 0x120 */
+	unsigned int resv10[8];
+	unsigned int cpswclkstctrl; /* offset 0x144 */
+	unsigned int lcdcclkstctrl; /* offset 0x148 */
+};
+
+/* Encapsulating Display pll registers */
+struct cm_dpll {
+	unsigned int resv1;
+	unsigned int clktimer7clk;	/* offset 0x04 */
+	unsigned int clktimer2clk;	/* offset 0x08 */
+	unsigned int clktimer3clk;	/* offset 0x0C */
+	unsigned int clktimer4clk;	/* offset 0x10 */
+	unsigned int resv2;
+	unsigned int clktimer5clk;	/* offset 0x18 */
+	unsigned int clktimer6clk;	/* offset 0x1C */
+	unsigned int resv3[2];
+	unsigned int clktimer1clk;	/* offset 0x28 */
+	unsigned int resv4[2];
+	unsigned int clklcdcpixelclk;	/* offset 0x34 */
+};
+
+
+/* Control Module RTC registers */
+struct cm_rtc {
+	unsigned int rtcclkctrl;	/* offset 0x0 */
+	unsigned int clkstctrl;		/* offset 0x4 */
+};
+
+#define CM_RTC				0x44E00800
+
+
+struct cm_perpll *const cmper = (struct cm_perpll *)CM_PER;
+struct cm_wkuppll *const cmwkup = (struct cm_wkuppll *)CM_WKUP;
+struct cm_dpll *const cmdpll = (struct cm_dpll *)CM_DPLL;
+struct cm_rtc *const cmrtc = (struct cm_rtc *)CM_RTC;
+
+
+#define LDELAY 1000000
+
+/*CM_<clock_domain>__CLKCTRL */
+#define CD_CLKCTRL_CLKTRCTRL_SHIFT		0
+#define CD_CLKCTRL_CLKTRCTRL_MASK		3
+
+#define CD_CLKCTRL_CLKTRCTRL_NO_SLEEP		0
+#define CD_CLKCTRL_CLKTRCTRL_SW_SLEEP		1
+#define CD_CLKCTRL_CLKTRCTRL_SW_WKUP		2
+
+/* CM_<clock_domain>_<module>_CLKCTRL */
+#define MODULE_CLKCTRL_MODULEMODE_SHIFT		0
+#define MODULE_CLKCTRL_MODULEMODE_MASK		3
+#define MODULE_CLKCTRL_IDLEST_SHIFT		16
+#define MODULE_CLKCTRL_IDLEST_MASK		(3 << 16)
+
+#define MODULE_CLKCTRL_MODULEMODE_SW_DISABLE		0
+#define MODULE_CLKCTRL_MODULEMODE_SW_EXPLICIT_EN	2
+
+#define MODULE_CLKCTRL_IDLEST_FULLY_FUNCTIONAL	0
+#define MODULE_CLKCTRL_IDLEST_TRANSITIONING	1
+#define MODULE_CLKCTRL_IDLEST_IDLE		2
+#define MODULE_CLKCTRL_IDLEST_DISABLED		3
+
+/* CM_CLKMODE_DPLL */
+#define CM_CLKMODE_DPLL_SSC_EN_SHIFT		12
+#define CM_CLKMODE_DPLL_SSC_EN_MASK		(1 << 12)
+#define CM_CLKMODE_DPLL_REGM4XEN_SHIFT		11
+#define CM_CLKMODE_DPLL_REGM4XEN_MASK		(1 << 11)
+#define CM_CLKMODE_DPLL_LPMODE_EN_SHIFT		10
+#define CM_CLKMODE_DPLL_LPMODE_EN_MASK		(1 << 10)
+#define CM_CLKMODE_DPLL_RELOCK_RAMP_EN_SHIFT	9
+#define CM_CLKMODE_DPLL_RELOCK_RAMP_EN_MASK	(1 << 9)
+#define CM_CLKMODE_DPLL_DRIFTGUARD_EN_SHIFT	8
+#define CM_CLKMODE_DPLL_DRIFTGUARD_EN_MASK	(1 << 8)
+#define CM_CLKMODE_DPLL_RAMP_RATE_SHIFT		5
+#define CM_CLKMODE_DPLL_RAMP_RATE_MASK		(0x7 << 5)
+#define CM_CLKMODE_DPLL_EN_SHIFT		0
+#define CM_CLKMODE_DPLL_EN_MASK			(0x7 << 0)
+
+#define CM_CLKMODE_DPLL_DPLL_EN_SHIFT		0
+#define CM_CLKMODE_DPLL_DPLL_EN_MASK		7
+
+#define DPLL_EN_STOP			1
+#define DPLL_EN_MN_BYPASS		4
+#define DPLL_EN_LOW_POWER_BYPASS	5
+#define DPLL_EN_LOCK			7
+
+/* CM_IDLEST_DPLL fields */
+#define ST_DPLL_CLK_MASK		1
+
+/* CM_CLKSEL_DPLL */
+#define CM_CLKSEL_DPLL_M_SHIFT			8
+#define CM_CLKSEL_DPLL_M_MASK			(0x7FF << 8)
+#define CM_CLKSEL_DPLL_N_SHIFT			0
+#define CM_CLKSEL_DPLL_N_MASK			0x7F
+
+
+static inline void wait_for_clk_enable(u32 *clkctrl_addr)
+{
+	u32 clkctrl, idlest = MODULE_CLKCTRL_IDLEST_DISABLED;
+	u32 bound = LDELAY;
+
+	while ((idlest == MODULE_CLKCTRL_IDLEST_DISABLED) ||
+		(idlest == MODULE_CLKCTRL_IDLEST_TRANSITIONING)) {
+		clkctrl = readl(clkctrl_addr);
+		idlest = (clkctrl & MODULE_CLKCTRL_IDLEST_MASK) >>
+			 MODULE_CLKCTRL_IDLEST_SHIFT;
+		if (--bound == 0) {
+			printf("Clock enable failed for 0x%p idlest 0x%x\n",
+			       clkctrl_addr, clkctrl);
+			return;
+		}
+	}
+}
+
+
+static inline void enable_clock_domain(u32 *const clkctrl_reg, u32 enable_mode)
+{
+	clrsetbits_le32(clkctrl_reg, CD_CLKCTRL_CLKTRCTRL_MASK,
+			enable_mode << CD_CLKCTRL_CLKTRCTRL_SHIFT);
+	debug("Enable clock domain - %p\n", clkctrl_reg);
+}
+
+static inline void enable_clock_module(u32 *const clkctrl_addr, u32 enable_mode,
+				       u32 wait_for_enable)
+{
+	clrsetbits_le32(clkctrl_addr, MODULE_CLKCTRL_MODULEMODE_MASK,
+			enable_mode << MODULE_CLKCTRL_MODULEMODE_SHIFT);
+	debug("Enable clock module - %p\n", clkctrl_addr);
+	if (wait_for_enable)
+		wait_for_clk_enable(clkctrl_addr);
+}
+
+static void do_enable_clocks(u32 *const *clk_domains,
+		      u32 *const *clk_modules_explicit_en, u8 wait_for_enable)
+{
+	u32 i, max = 100;
+
+	/* Put the clock domains in SW_WKUP mode */
+	for (i = 0; (i < max) && clk_domains[i]; i++) {
+		enable_clock_domain(clk_domains[i],
+				    CD_CLKCTRL_CLKTRCTRL_SW_WKUP);
+	}
+
+	/* Clock modules that need to be put in SW_EXPLICIT_EN mode */
+	for (i = 0; (i < max) && clk_modules_explicit_en[i]; i++) {
+		enable_clock_module(clk_modules_explicit_en[i],
+				    MODULE_CLKCTRL_MODULEMODE_SW_EXPLICIT_EN,
+				    wait_for_enable);
+	};
+}
+
+
+static void enable_basic_clocks(void)
+{
+	u32 *const clk_domains[] = {
+		&cmper->l3clkstctrl,
+		&cmper->l4fwclkstctrl,
+		&cmper->l3sclkstctrl,
+		&cmper->l4lsclkstctrl,
+		&cmwkup->wkclkstctrl,
+		&cmper->emiffwclkctrl,
+		&cmrtc->clkstctrl,
+		0
+	};
+
+	u32 *const clk_modules_explicit_en[] = {
+		&cmper->l3clkctrl,
+		&cmper->l4lsclkctrl,
+		&cmper->l4fwclkctrl,
+		&cmwkup->wkl4wkclkctrl,
+		&cmper->l3instrclkctrl,
+		&cmper->l4hsclkctrl,
+		&cmwkup->wkgpio0clkctrl,
+		&cmwkup->wkctrlclkctrl,
+		&cmper->timer2clkctrl,
+		&cmper->gpmcclkctrl,
+		&cmper->elmclkctrl,
+		&cmper->mmc0clkctrl,
+		&cmper->mmc1clkctrl,
+		&cmwkup->wkup_i2c0ctrl,
+		&cmper->gpio1clkctrl,
+		&cmper->gpio2clkctrl,
+		&cmper->gpio3clkctrl,
+		&cmper->i2c1clkctrl,
+		&cmper->cpgmac0clkctrl,
+		&cmper->spi0clkctrl,
+		&cmrtc->rtcclkctrl,
+		&cmper->usb0clkctrl,
+		&cmper->emiffwclkctrl,
+		&cmper->emifclkctrl,
+		0
+	};
+
+	do_enable_clocks(clk_domains, clk_modules_explicit_en, 1);
+
+	/* Select the Master osc 24 MHZ as Timer2 clock source */
+	writel(0x1, &cmdpll->clktimer2clk);
+}
+
+struct dpll_params {
+	u32 m;
+	u32 n;
+	s8 m2;
+	s8 m3;
+	s8 m4;
+	s8 m5;
+	s8 m6;
+};
+
+#define V_OSCK2			24000000  /* Clock output from T2 */
+#define OSC2			(V_OSCK2/1000000)
+#define MPUPLL_M_300	300
+
+const struct dpll_params dpll_mpu = {
+		MPUPLL_M_300, OSC2-1, 1, -1, -1, -1, -1};
+const struct dpll_params dpll_core = {
+		50, OSC2-1, -1, -1, 1, 1, 1};
+const struct dpll_params dpll_per = {
+		960, OSC2-1, 5, -1, -1, -1, -1};
+const struct dpll_params dpll_ddr_bone_black = {
+		400, OSC2-1, 1, -1, -1, -1, -1};		
+
+struct dpll_regs {
+	u32 cm_clkmode_dpll;
+	u32 cm_idlest_dpll;
+	u32 cm_autoidle_dpll;
+	u32 cm_clksel_dpll;
+	u32 cm_div_m2_dpll;
+	u32 cm_div_m3_dpll;
+	u32 cm_div_m4_dpll;
+	u32 cm_div_m5_dpll;
+	u32 cm_div_m6_dpll;
+};
+
+const struct dpll_regs dpll_mpu_regs = {
+	.cm_clkmode_dpll	= CM_WKUP + 0x88,
+	.cm_idlest_dpll		= CM_WKUP + 0x20,
+	.cm_clksel_dpll		= CM_WKUP + 0x2C,
+	.cm_div_m2_dpll		= CM_WKUP + 0xA8,
+};
+
+const struct dpll_regs dpll_core_regs = {
+	.cm_clkmode_dpll	= CM_WKUP + 0x90,
+	.cm_idlest_dpll		= CM_WKUP + 0x5C,
+	.cm_clksel_dpll		= CM_WKUP + 0x68,
+	.cm_div_m4_dpll		= CM_WKUP + 0x80,
+	.cm_div_m5_dpll		= CM_WKUP + 0x84,
+	.cm_div_m6_dpll		= CM_WKUP + 0xD8,
+};
+
+const struct dpll_regs dpll_per_regs = {
+	.cm_clkmode_dpll	= CM_WKUP + 0x8C,
+	.cm_idlest_dpll		= CM_WKUP + 0x70,
+	.cm_clksel_dpll		= CM_WKUP + 0x9C,
+	.cm_div_m2_dpll		= CM_WKUP + 0xAC,
+};
+
+
+const struct dpll_regs dpll_ddr_regs = {
+	.cm_clkmode_dpll	= CM_WKUP + 0x94,
+	.cm_idlest_dpll		= CM_WKUP + 0x34,
+	.cm_clksel_dpll		= CM_WKUP + 0x40,
+	.cm_div_m2_dpll		= CM_WKUP + 0xA0,
+};
+
+
+static void setup_post_dividers(const struct dpll_regs *dpll_regs,
+			 const struct dpll_params *params)
+{
+	/* Setup post-dividers */
+	if (params->m2 >= 0)
+		writel(params->m2, dpll_regs->cm_div_m2_dpll);
+	if (params->m3 >= 0)
+		writel(params->m3, dpll_regs->cm_div_m3_dpll);
+	if (params->m4 >= 0)
+		writel(params->m4, dpll_regs->cm_div_m4_dpll);
+	if (params->m5 >= 0)
+		writel(params->m5, dpll_regs->cm_div_m5_dpll);
+	if (params->m6 >= 0)
+		writel(params->m6, dpll_regs->cm_div_m6_dpll);
+}
+
+static inline void do_lock_dpll(const struct dpll_regs *dpll_regs)
+{
+	clrsetbits_le32(dpll_regs->cm_clkmode_dpll,
+			CM_CLKMODE_DPLL_DPLL_EN_MASK,
+			DPLL_EN_LOCK << CM_CLKMODE_DPLL_EN_SHIFT);
+}
+
+static inline void wait_for_lock(const struct dpll_regs *dpll_regs)
+{
+	if (!wait_on_value(ST_DPLL_CLK_MASK, ST_DPLL_CLK_MASK,
+			   (void *)dpll_regs->cm_idlest_dpll, LDELAY)) {
+		printf("DPLL locking failed for 0x%x\n",
+		       dpll_regs->cm_clkmode_dpll);
+		hang();
+	}
+}
+
+static inline void do_bypass_dpll(const struct dpll_regs *dpll_regs)
+{
+	clrsetbits_le32(dpll_regs->cm_clkmode_dpll,
+			CM_CLKMODE_DPLL_DPLL_EN_MASK,
+			DPLL_EN_MN_BYPASS << CM_CLKMODE_DPLL_EN_SHIFT);
+}
+
+static inline void wait_for_bypass(const struct dpll_regs *dpll_regs)
+{
+	if (!wait_on_value(ST_DPLL_CLK_MASK, 0,
+			   (void *)dpll_regs->cm_idlest_dpll, LDELAY)) {
+		printf("Bypassing DPLL failed 0x%x\n",
+		       dpll_regs->cm_clkmode_dpll);
+	}
+}
+
+static void bypass_dpll(const struct dpll_regs *dpll_regs)
+{
+	do_bypass_dpll(dpll_regs);
+	wait_for_bypass(dpll_regs);
+}
+
+void do_setup_dpll(const struct dpll_regs *dpll_regs,
+		   const struct dpll_params *params)
+{
+	u32 temp;
+
+	if (!params)
+		return;
+
+	temp = readl(dpll_regs->cm_clksel_dpll);
+
+	bypass_dpll(dpll_regs);
+
+	/* Set M & N */
+	temp &= ~CM_CLKSEL_DPLL_M_MASK;
+	temp |= (params->m << CM_CLKSEL_DPLL_M_SHIFT) & CM_CLKSEL_DPLL_M_MASK;
+
+	temp &= ~CM_CLKSEL_DPLL_N_MASK;
+	temp |= (params->n << CM_CLKSEL_DPLL_N_SHIFT) & CM_CLKSEL_DPLL_N_MASK;
+
+	writel(temp, dpll_regs->cm_clksel_dpll);
+
+	setup_post_dividers(dpll_regs, params);
+
+	/* Wait till the DPLL locks */
+	do_lock_dpll(dpll_regs);
+	wait_for_lock(dpll_regs);
+}
+
+
+static void setup_dplls(void)
+{
+	const struct dpll_params *params;
+	/*
+	params = &dpll_core;
+	do_setup_dpll(&dpll_core_regs, params);
+
+	params = &dpll_mpu;
+	do_setup_dpll(&dpll_mpu_regs, params);
+
+	params = &dpll_per;
+	do_setup_dpll(&dpll_per_regs, params);
+	writel(0x300, &cmwkup->clkdcoldodpllper);
+	*/
+	
+	params = &dpll_ddr_bone_black;
+	do_setup_dpll(&dpll_ddr_regs, params);
+}
+
+
+void prcm_init2(void)
+{
+	enable_basic_clocks();
+	setup_dplls();
+}
+			
 static void config_emif_ddr3(void)
 {
 	u32 i;
@@ -224,35 +1260,6 @@ static void config_emif_ddr3(void)
 	__raw_writel(EMIF_SDCFG, EMIF4_0_SDRAM_CONFIG2);
 }
 
-static void config_am335x_ddr(void)
-{
-	int data_macro_0 = 0;
-	int data_macro_1 = 1;
-
-	enable_ddr_clocks();
-
-	config_vtp();
-
-	Cmd_Macro_Config();
-
-	Data_Macro_Config(data_macro_0);
-	Data_Macro_Config(data_macro_1);
-
-	__raw_writel(PHY_RANK0_DELAY, DATA0_RANK0_DELAYS_0);
-	__raw_writel(PHY_RANK0_DELAY, DATA1_RANK0_DELAYS_0);
-
-	__raw_writel(DDR_IOCTRL_VALUE, DDR_CMD0_IOCTRL);
-	__raw_writel(DDR_IOCTRL_VALUE, DDR_CMD1_IOCTRL);
-	__raw_writel(DDR_IOCTRL_VALUE, DDR_CMD2_IOCTRL);
-	__raw_writel(DDR_IOCTRL_VALUE, DDR_DATA0_IOCTRL);
-	__raw_writel(DDR_IOCTRL_VALUE, DDR_DATA1_IOCTRL);
-
-	__raw_writel(__raw_readl(DDR_IO_CTRL) & 0xefffffff, DDR_IO_CTRL);
-	__raw_writel(__raw_readl(DDR_CKE_CTRL) | 0x00000001, DDR_CKE_CTRL);
-
-	config_emif_ddr3();
-}
-
 static void init_timer(void)
 {
 	/* Reset the Timer */
@@ -267,6 +1274,41 @@ static void init_timer(void)
 #endif
 
 #if defined(CONFIG_SPL_BUILD) && defined(CONFIG_SPL_BOARD_INIT)
+/* MYIR , only applicable in PG2.x. */
+unsigned int get_mpu_maxfreq(void)
+{
+#define CONTROL_MODULE_BASE 0x44E10000
+#define EFUSE_SMA    		(CONTROL_MODULE_BASE + 0x7FC)
+#define MPU_FREQ_MASK		0x1FFF
+	#define	MPU_MAX_FREQ_300M	0x1FEF
+	#define MPU_MAX_FREQ_600M	0x1FAF
+	#define MPU_MAX_FREQ_720M	0x1F2F
+	#define MPU_MAX_FREQ_800M	0x1E2F
+	#define MPU_MAX_FREQ_1000M	0x1C2F
+    #define MPU_MAX_FREQ_300M_ZCE   0x1FDF
+    #define MPU_MAX_FREQ_600M_ZCE   0x1F9F
+
+	unsigned int reg = __raw_readl(EFUSE_SMA);
+	
+	printf("EFUSE_SMA: 0x%08X, max freq reg: %#X\n", reg, reg&MPU_FREQ_MASK);
+
+	switch (reg&MPU_FREQ_MASK) {
+		case MPU_MAX_FREQ_300M:
+		case MPU_MAX_FREQ_300M_ZCE:
+			return MPUPLL_M_300;
+		case MPU_MAX_FREQ_600M:
+		case MPU_MAX_FREQ_600M_ZCE:
+			return MPUPLL_M_600;
+		case MPU_MAX_FREQ_720M:
+			return MPUPLL_M_720;
+		case MPU_MAX_FREQ_800M:
+			return MPUPLL_M_800;
+		case MPU_MAX_FREQ_1000M:
+			return MPUPLL_M_1000;
+		default:
+			return MPUPLL_M_800;
+	}
+}
 
 /* Added by MYIR for tps65217 */
 int myir_pmic_init(void)
@@ -274,6 +1316,25 @@ int myir_pmic_init(void)
 	/* BeagleBone PMIC Code */
 	int usb_cur_lim;
 	int mpu_vdd;
+	unsigned int mpu_freq = get_mpu_maxfreq();
+	
+	printf("Set MPU freq to %d MHz\n", mpu_freq);
+	switch (mpu_freq) {
+		case MPUPLL_M_300:
+		case MPUPLL_M_600:
+			mpu_vdd = TPS65217_DCDC_VOLT_SEL_1125MV;
+			break;
+		case MPUPLL_M_720:
+		case MPUPLL_M_800:
+			mpu_vdd = TPS65217_DCDC_VOLT_SEL_1275MV;
+			break;
+		case MPUPLL_M_1000:
+			mpu_vdd = TPS65217_DCDC_VOLT_SEL_1325MV;
+			break;
+		default:
+			mpu_vdd = TPS65217_DCDC_VOLT_SEL_1275MV;
+			break;
+	}
 
 	/* Configure the i2c0 pin mux */
 	enable_i2c0_pin_mux();
@@ -288,7 +1349,6 @@ int myir_pmic_init(void)
 	 * the MPU voltage controller as needed.
 	 */
 	usb_cur_lim = TPS65217_USB_INPUT_CUR_LIMIT_1300MA;
-	mpu_vdd = TPS65217_DCDC_VOLT_SEL_1275MV;
 		
 	if (tps65217_reg_write(TPS65217_PROT_LEVEL_NONE,
 				   TPS65217_POWER_PATH,
@@ -324,11 +1384,12 @@ int myir_pmic_init(void)
 				   TPS65217_LDO_MASK))
 		puts("tps65217_reg_write failure\n");
 		
-	mpu_pll_config(MPUPLL_M_800);/* Added by MYIR, our chip is 800MHz */
+	mpu_pll_config(mpu_freq);
 }
 
 void spl_board_init(void)
 {
+/* Comment by Conway */
 	myir_pmic_init();
 }
 #endif
@@ -513,7 +1574,9 @@ void s_init(void)
 
 	preloader_console_init();
 
+	prcm_init2();
 	config_am335x_ddr();
+
 #endif
 }
 
@@ -626,17 +1689,13 @@ struct serial_device *default_serial_console(void)
 
 int board_init(void)
 {
-	u32 i2c_base_old;
-
+	
 	/* Configure the i2c0 pin mux */
 	enable_i2c0_pin_mux();
-	
-	/* Modified by Conway. Added i2c1 init for eeprom of lcd */
-	i2c_base_old = get_i2c_base();
+
+/* Modified by Conway */
+
 	i2c_init(CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE);
-	set_i2c_base(0x4802A000);
-	i2c_init(CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE);
-	set_i2c_base(i2c_base_old);
 	
 	printf("Did not find a recognized configuration, "
 		"assuming General purpose EVM in Profile 0 with "
@@ -679,7 +1738,7 @@ int misc_init_r(void)
 	debug("\tBoard serial : %.12s\n", header.serial);
 	debug("\tBoard config : %.6s\n\n", header.config);
 #endif
-	/* Add for MY-TFT070-K LCD */
+	
 	lcd_identify();
 
 #ifdef AUTO_UPDATESYS

@@ -98,7 +98,7 @@
 		"env import -t ${loadaddr} ${filesize}\0" \
 	"mmc_load_image=fatload mmc ${mmc_dev} ${kloadaddr} ${bootfile};" \
 		      "fatload mmc ${mmc_dev} ${rdloadaddr} ${ramdisk}\0" \
-	"optargs=board-am335xevm.display_mode="DISPLAY_MODE" mem=256M sdio_wifi=1\0" \
+	"optargs=board-am335xevm.display_mode="DISPLAY_MODE"\0" \
 	" bootargs_defaults=setenv bootargs " \
 		"console=${console} " \
 		"${optargs}\0" \
@@ -205,7 +205,7 @@
  /* Physical Memory Map */
 #define CONFIG_NR_DRAM_BANKS		1		/* 1 bank of DRAM */
 #define PHYS_DRAM_1			0x80000000	/* DRAM Bank #1 */
-#define PHYS_DRAM_1_SIZE		0x10000000	/* 256 MiB */
+#define PHYS_DRAM_1_SIZE CONFIG_DRAM_SIZE /* DRAM size */
 
 #define CONFIG_SYS_SDRAM_BASE		PHYS_DRAM_1
 #define CONFIG_SYS_INIT_RAM_ADDR	SRAM0_START

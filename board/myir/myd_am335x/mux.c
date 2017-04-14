@@ -509,7 +509,9 @@ static struct module_pin_mux spi1_pin_mux[] = {
  */
 static struct evm_pin_mux general_purpose_evm_pin_mux[] = {
 	{uart0_pin_mux, PROFILE_ALL, DEV_ON_BASEBOARD},
-	{i2c1_pin_mux, PROFILE_ALL, DEV_ON_BASEBOARD}, /* Delete PROFILE_2 & PROFILE_4 by Conway*/
+/* Modified by Conway */
+	{i2c0_pin_mux, PROFILE_ALL, DEV_ON_BASEBOARD}, /* Delete PROFILE_2 & PROFILE_4 */
+//	{i2c1_pin_mux, PROFILE_ALL & ~PROFILE_2 & ~PROFILE_4, DEV_ON_BASEBOARD},
 #ifdef CONFIG_NAND
 	{nand_pin_mux, PROFILE_ALL & ~PROFILE_2 & ~PROFILE_3, DEV_ON_DGHTR_BRD},
 #endif

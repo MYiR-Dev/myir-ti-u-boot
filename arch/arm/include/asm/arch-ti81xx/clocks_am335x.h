@@ -26,11 +26,13 @@
 #define OSC	24
 
 /* MAIN PLL Fdll = 1 GHZ, */
+#define MPUPLL_M_300    300 /* Added by MYIR */
 #define MPUPLL_M_500	500	/* 125 * n */
 #define MPUPLL_M_550	550	/* 125 * n */
 #define MPUPLL_M_600	600	/* 125 * n */
 #define MPUPLL_M_720	720	/* 125 * n */
 #define MPUPLL_M_800	800	/* added by MYIR */
+#define MPUPLL_M_1000   1000 /* Add by MYIR */
 
 #define MPUPLL_N	23	/* (n -1 ) myir */
 #define MPUPLL_M2	1

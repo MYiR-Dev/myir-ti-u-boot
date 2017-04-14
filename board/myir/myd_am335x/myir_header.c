@@ -69,9 +69,7 @@ int get_header(myir_header_t *header)
 	if (!header)
 		return -1;
 
-	/* Set the i2c base to I2C_BASE2 */
-	i2c_base_old = get_i2c_base();
-	set_i2c_base(0x4802A000);
+	/* Set the i2c base to I2C_BASE1. Modified by Conway*/	
 
 	if (i2c_probe(LCD_HEADER_I2C_ADDR)) {
 		printf("Not found the LCD header IC\n");
@@ -87,8 +85,8 @@ int get_header(myir_header_t *header)
 		return -1;
 	}
 
-	/* Restore i2c base */
-	set_i2c_base(i2c_base_old);
+	/* Restore i2c base. Commented by Conway*/
+//	set_i2c_base(i2c_base_old);
 	
 	if (check_header(header))
 		return -1;

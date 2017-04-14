@@ -176,7 +176,7 @@ int i2c_probe(uchar chip)
 {
 	int res = 1; /* default = fail */
 	u32 status;
-
+	
 	if (chip == readw ((i2c_base + I2C_OA_OFS)))
 		return res;
 
