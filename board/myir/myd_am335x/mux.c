@@ -324,6 +324,8 @@ static struct module_pin_mux myir_backlight_mux[] = {
 
 static struct module_pin_mux myir_wdt_mux[] = {
 	        {OFFSET(emu1), (MODE(7) | PULLUDDIS | RXACTIVE)}, /* GPOI3_8, pull disable, input */
+	        {OFFSET(mcasp0_fsr), (MODE(7) | PULLUDDIS | RXACTIVE)}, /* GPOI3_19, pull disable, input */
+	        {OFFSET(xdma_event_intr0), (MODE(7) | PULLUP_EN)}, /* GPOI0_19, pull up */
 			        {-1},
 };
 

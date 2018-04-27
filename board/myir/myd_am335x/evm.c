@@ -400,6 +400,7 @@ static void myir_init_backlight()
 #define GPIO0_SETDATAOUT        (GPIO0_BASE + 0x194)
 #define GPIO0_CLEARDATAOUT      (GPIO0_BASE + 0x190)
 #define BL_BIT                 (1 << 2)
+#define C335X_V2_ETH_RST_PIN	(1<<19)
 
     /* Writing to MODULEMODE field of CM_WKUP_GPIO0_CLKCTRL register. */
     __raw_writel(__raw_readl(SOC_CM_WKUP_REGS + CM_WKUP_GPIO0_CLKCTRL) |=
@@ -481,12 +482,14 @@ static void myir_init_backlight()
           (__raw_readl(SOC_CM_WKUP_REGS + CM_WKUP_CLKSTCTRL) &
            CM_WKUP_CLKSTCTRL_CLKACTIVITY_GPIO0_GDBCLK));
 
-
-
 	enable_backlight_pin_mux();
 	__raw_writel(__raw_readl(GPIO0_OE) & ~BL_BIT, GPIO0_OE);
 	__raw_writel(BL_BIT, GPIO0_CLEARDATAOUT);
 
+        __raw_writel(__raw_readl(GPIO0_OE) & ~(C335X_V2_ETH_RST_PIN), GPIO0_OE);
+	__raw_writel(C335X_V2_ETH_RST_PIN, GPIO0_CLEARDATAOUT);
+	udelay(4000);
+        __raw_writel(C335X_V2_ETH_RST_PIN, GPIO0_SETDATAOUT);
 }
 
 /*
