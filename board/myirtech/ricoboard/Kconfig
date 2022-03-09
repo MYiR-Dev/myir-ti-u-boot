@@ -1,0 +1,19 @@
+if TARGET_RICOBOARD
+
+config SYS_BOARD
+	default "ricoboard"
+
+config SYS_VENDOR
+	default "myirtech"
+
+config SYS_SOC
+	default "am33xx"
+
+config SYS_CONFIG_NAME
+	default "ricoboard"
+config MYIR_BORAD_NAME
+	string "myir board name"
+	depends on TARGET_RICOBOARD
+source "board/myirtech/common/Kconfig"
+
+endif
