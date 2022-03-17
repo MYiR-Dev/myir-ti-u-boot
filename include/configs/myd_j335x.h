@@ -82,6 +82,7 @@
 
 /* Enable Atheros phy driver */
 #define CONFIG_PHY_ATHEROS
+#define CONFIG_PHY_MOTORCOMM
 
 #ifdef CONFIG_NAND
 #define CONFIG_RBTREE 1
